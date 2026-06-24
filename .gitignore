@@ -9,5 +9,6 @@ wheels/
 # Virtual environments
 .venv
 
-# Data-related files:
+# Devlopment-related files:
 *.csv
+dev_device.json
