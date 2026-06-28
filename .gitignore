@@ -11,4 +11,7 @@ wheels/
 
 # Devlopment-related files:
 *.csv
+*.ods
+.~lock.*.ods#
+
 dev_device.json

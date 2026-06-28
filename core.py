@@ -5,18 +5,53 @@ from pathlib import Path
 
 import pandas as pd
 import requests
-from requests import HTTPError
+from requests import ConnectionError, HTTPError
 from requests.auth import HTTPBasicAuth
 
 
-def main(args):
-    sender = SMSSender(args.device)
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "-i",
+        "--messages",
+        type=Path,
+        help="Fichier CSV qui contient à la fois les messages et les numéros visés.",
+    )
+    parser.add_argument("--device", type=Path, default=Path("device.json"))
+    args = parser.parse_args()
+    send_batch_sms(args.messages, args.device)
 
-    db = pd.read_csv(args.messages)
+
+def send_batch_sms(msgs: Path, device: Path):
+    sender = SMSSender(device)
+    db = load_db(msgs)
+
     for _, s in db.iterrows():
         phone = s.phone.strip("'")
+        if phone.startswith("0"):
+            phone = "+33" + phone[1:]
         msg = s.message
+        if hasattr(s, "header"):
+            msg = f"{s.header}: {msg}"
+
         is_sucess, state = sender.send_and_wait(phone=phone, msg=msg)
+
+        print(phone)
+        print(msg)
+        print("Is sucess:", is_sucess)
+        print(state)
+
+
+def load_db(path: Path) -> pd.DataFrame:
+    match path.suffix:
+        case ".csv":
+            return pd.read_csv(path)
+
+        case ".ods":
+            return pd.read_excel(path).astype(str)
+
+        case _:
+            raise ValueError(f"Unknown suffix: {path.suffix}")
 
 
 class SMSSender:
@@ -57,7 +92,14 @@ class SMSSender:
         Envoie un SMS et attend le statut final.
         Retourne (succès: bool, état: str).
         """
-        response = self.send_sms(phone, msg, with_delivery_report=True)
+        try:
+            response = self.send_sms(phone, msg, with_delivery_report=True)
+
+        except ConnectionError:
+            return False, "ConnectionError"
+
+        except HTTPError:
+            return False, "HTTPError"
 
         # La réponse contient une liste de messages (un par numéro)
         messages = response if isinstance(response, list) else [response]
@@ -110,13 +152,4 @@ class SMSSender:
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "-i",
-        "--messages",
-        type=Path,
-        help="Fichier CSV qui contient à la fois les messages et les numéros visés.",
-    )
-    parser.add_argument("--device", type=Path, default=Path("device.json"))
-    args = parser.parse_args()
-    main(args)
+    main()
