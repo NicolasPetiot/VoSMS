@@ -13,5 +13,6 @@ wheels/
 *.csv
 *.ods
 .~lock.*.ods#
+*.log
 
 dev_device.json

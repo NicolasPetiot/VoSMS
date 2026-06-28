@@ -8,6 +8,8 @@ import requests
 from requests import ConnectionError, HTTPError
 from requests.auth import HTTPBasicAuth
 
+from log import setup_logger
+
 
 def main():
     parser = argparse.ArgumentParser()
@@ -19,33 +21,48 @@ def main():
     )
     parser.add_argument("--device", type=Path, default=Path("device.json"))
     args = parser.parse_args()
-    send_batch_sms(args.messages, args.device)
+    send_batch_sms(args.messages, args.device, log_lvl="info", reinitialize_log=False)
 
 
-def send_batch_sms(msgs: Path, device: Path):
+def send_batch_sms(msgs: Path, device: Path, log_lvl="info", reinitialize_log=False):
+    log = setup_logger(lvl=log_lvl, reinitialize=reinitialize_log)
+
     sender = SMSSender(device)
     db = load_db(msgs)
+    log.debug("Sender and Database loaded")
 
     for _, s in db.iterrows():
-        phone = s.phone.strip("'")
-        if phone.startswith("0"):
-            phone = "+33" + phone[1:]
+        dest = s.dest
+        log.info(f"Envoi de SMS à {dest}")
+
+        # Build Message:
         msg = s.message
         if hasattr(s, "header"):
             msg = f"{s.header}: {msg}"
+        log.info(msg)
+
+        # Build phone number:
+        phone = s.phone.strip("'")
+        log.debug(f"Phone: {phone}")
+        if phone.startswith("0"):
+            phone = "+33" + phone[1:]
+
+        if not phone.startswith("+33"):
+            log.error("Numéro invalide...")
+            continue
 
         is_sucess, state = sender.send_and_wait(phone=phone, msg=msg)
+        if is_sucess:
+            log.info(state)
 
-        print(phone)
-        print(msg)
-        print("Is sucess:", is_sucess)
-        print(state)
+        else:
+            log.error(state)
 
 
 def load_db(path: Path) -> pd.DataFrame:
     match path.suffix:
         case ".csv":
-            return pd.read_csv(path)
+            return pd.read_csv(path).astype(str)
 
         case ".ods":
             return pd.read_excel(path).astype(str)
